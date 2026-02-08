@@ -2,7 +2,7 @@
 
 ## Module Hierarchy
 
-Currently implemented modules (Milestone 1: modular arithmetic primitives):
+Currently implemented modules (Milestones 1-2: modular arithmetic + NTT butterfly):
 
 ```mermaid
 graph TD
@@ -26,10 +26,10 @@ graph TD
     end
 ```
 
-## NTT Butterfly — Target Architecture
+## NTT Butterfly
 
 The NTT butterfly is the core datapath of CRYSTALS-Kyber. Each butterfly performs:
-- `t = zeta * odd_coeff mod q` (Montgomery or Barrett multiplication)
+- `t = zeta * odd_coeff mod q` (Barrett reduction)
 - `even' = even + t mod q`
 - `odd'  = even - t mod q`
 
@@ -37,18 +37,27 @@ Barrett reduction sits at the heart of each butterfly, reducing the product back
 
 ```mermaid
 graph TD
-    subgraph "NTT Butterfly (Cooley-Tukey)"
-        EVEN["even coeff (12 bits)"] --> ADD["+"]
-        ODD["odd coeff (12 bits)"] --> ZMUL["* zeta"]
-        ZMUL --> REDUCE["barrett_reduce"]
-        REDUCE --> T_OUT["t (12 bits)"]
-        T_OUT --> ADD
-        T_OUT --> SUB2["-"]
-        EVEN --> SUB2
-        ADD --> CSQ_ADD["cond_sub_q"]
-        SUB2 --> CSQ_SUB["cond_add_q (TBD)"]
-        CSQ_ADD --> EVEN_OUT["even' (12 bits)"]
-        CSQ_SUB --> ODD_OUT["odd' (12 bits)"]
+    subgraph "ntt_butterfly"
+        EVEN["even (12 bits)"] --> ADD
+        ODD["odd (12 bits)"] --> ZMUL["zeta * odd (24 bits)"]
+        ZMUL --> BARRETT["barrett_reduce #(.INPUT_WIDTH(24))"]
+        BARRETT --> T["t (12 bits)"]
+
+        T --> ADD
+
+        subgraph "mod_add"
+            ADD["+"] --> CSQ["cond_sub_q"]
+        end
+
+        T --> SUB2
+
+        subgraph "mod_sub"
+            EVEN --> SUB2["-"]
+            SUB2 --> CAQ["cond_add_q"]
+        end
+
+        CSQ --> EVEN_OUT["even_out (12 bits)"]
+        CAQ --> ODD_OUT["odd_out (12 bits)"]
     end
 ```
 
@@ -60,13 +69,13 @@ graph TD
 | `cond_sub_q` | Done | Conditional subtraction, [0,2q-1] to [0,q-1] |
 | `barrett_reduce` | Done | Barrett reduction mod 3329, parameterized width |
 
-### Milestone 2 -- NTT Butterfly
+### Milestone 2 -- NTT Butterfly (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `cond_add_q` | Planned | Conditional addition for subtraction underflow |
-| `mod_add` | Planned | Modular addition in Z_q |
-| `mod_sub` | Planned | Modular subtraction in Z_q |
-| `ntt_butterfly` | Planned | Cooley-Tukey butterfly (multiply + add/sub) |
+| `cond_add_q` | Done | Conditional addition for subtraction underflow |
+| `mod_add` | Done | Modular addition in Z_q |
+| `mod_sub` | Done | Modular subtraction in Z_q |
+| `ntt_butterfly` | Done | Cooley-Tukey butterfly (multiply + add/sub) |
 
 ### Milestone 3 -- NTT/INTT Engine
 | Module | Status | Description |
