@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
+venv/
+.venv/
+
+# cocotb / simulation
+sim_build/
+results.xml
+*.vcd
+*.fst
+*.ghw
+
+# Icarus Verilog
+*.vvp
+
+# Vivado / FPGA
+*.bit
+*.bin
+*.ltx
+*.dcp
+*.jou
+*.log
+*.str
+.Xil/
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
