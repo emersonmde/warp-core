@@ -196,10 +196,10 @@ graph TD
 |--------|--------|-------------|
 | `poly_addsub` | Done | Coefficient-wise add/sub with mode input (0=add, 1=sub). Pipelined 258-cycle FSM using dual-port RAM for read/write overlap. |
 
-### Milestone 5b -- CBD Sampler
+### Milestone 5b -- CBD Sampler (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `cbd_sampler` | Planned | Consumes 128 random bytes via byte stream interface, produces 256 CBD η=2 coefficients in [0, q-1]. ~130 cycles excluding byte source latency. |
+| `cbd_sampler` | Done | Consumes 128 random bytes via byte stream interface, produces 256 CBD η=2 coefficients in [0, q-1]. 129 cycles (byte_valid always high). Dual-port write: both nibbles per byte written simultaneously. |
 
 ### Milestone 5c -- kyber_top RAM Bank and Host I/O
 | Module | Status | Description |

@@ -244,6 +244,27 @@ def schoolbook_mul(a: list, b: list) -> list:
     return r
 
 
+def cbd_sample_eta2(input_bytes: list) -> list:
+    """CBD η=2 sampling: convert 128 random bytes to 256 coefficients in [0, q-1].
+
+    Each byte produces 2 coefficients from its low and high nibbles:
+        nibble [b3 b2 b1 b0] → coeff = (b0+b1) - (b2+b3)
+        Result in [-2, 2], mapped to [0, q-1] via mod q.
+
+    FIPS 203, Section 4.2.2 (CBD_η with η=2).
+    """
+    assert len(input_bytes) == 128, f"CBD η=2 requires 128 bytes, got {len(input_bytes)}"
+    coeffs = []
+    for byte_val in input_bytes:
+        for shift in (0, 4):  # low nibble, then high nibble
+            nibble = (byte_val >> shift) & 0xF
+            a = (nibble & 1) + ((nibble >> 1) & 1)      # b0 + b1
+            b = ((nibble >> 2) & 1) + ((nibble >> 3) & 1)  # b2 + b3
+            coeff = (a - b) % KYBER_Q
+            coeffs.append(coeff)
+    return coeffs
+
+
 def ntt_forward(coeffs: list) -> list:
     """Forward NTT (Cooley-Tukey, in-place).
 
