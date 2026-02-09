@@ -83,6 +83,24 @@ def mod_sub(a: int, b: int) -> int:
     return cond_add_q(diff & 0x1FFF)
 
 
+def poly_add(a: list, b: list) -> list:
+    """Coefficient-wise polynomial addition in Z_q.
+
+    Computes a[i] + b[i] mod q for all 256 coefficients.
+    """
+    assert len(a) == KYBER_N and len(b) == KYBER_N
+    return [mod_add(a[i], b[i]) for i in range(KYBER_N)]
+
+
+def poly_sub(a: list, b: list) -> list:
+    """Coefficient-wise polynomial subtraction in Z_q.
+
+    Computes a[i] - b[i] mod q for all 256 coefficients.
+    """
+    assert len(a) == KYBER_N and len(b) == KYBER_N
+    return [mod_sub(a[i], b[i]) for i in range(KYBER_N)]
+
+
 def compress_q(x: int, d: int) -> int:
     """Compress: round(2^d * x / q) mod 2^d.
 

@@ -191,11 +191,10 @@ graph TD
 | `poly_basemul` | Done | Pointwise multiply in NTT domain (257 cycles) |
 | `compress` / `decompress` | Done | Bit compression for ciphertext (parameterized, all 5 D values) |
 
-### Milestone 5a -- Polynomial Add/Sub
+### Milestone 5a -- Polynomial Add/Sub (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `poly_add` | Planned | Sequential FSM, reads two RAM port groups, writes mod_add result. 258 cycles. |
-| `poly_sub` | Planned | Sequential FSM, reads two RAM port groups, writes mod_sub result. 258 cycles. |
+| `poly_addsub` | Done | Coefficient-wise add/sub with mode input (0=add, 1=sub). Pipelined 258-cycle FSM using dual-port RAM for read/write overlap. |
 
 ### Milestone 5b -- CBD Sampler
 | Module | Status | Description |

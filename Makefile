@@ -1,14 +1,14 @@
 .PHONY: test clean
 .PHONY: test_cond_sub_q test_barrett_reduce test_cond_add_q test_mod_add test_mod_sub test_ntt_butterfly
 .PHONY: test_intt_butterfly test_ntt_rom test_poly_ram test_ntt_engine test_basemul_unit test_poly_basemul
-.PHONY: test_compress test_decompress
+.PHONY: test_compress test_decompress test_poly_addsub
 .PHONY: waves_cond_sub_q waves_barrett_reduce waves_cond_add_q waves_mod_add waves_mod_sub waves_ntt_butterfly
 .PHONY: waves_intt_butterfly waves_ntt_rom waves_poly_ram waves_ntt_engine waves_basemul_unit waves_poly_basemul
-.PHONY: waves_compress waves_decompress
+.PHONY: waves_compress waves_decompress waves_poly_addsub
 
 test: test_cond_sub_q test_barrett_reduce test_cond_add_q test_mod_add test_mod_sub test_ntt_butterfly \
       test_intt_butterfly test_ntt_rom test_poly_ram test_ntt_engine test_basemul_unit test_poly_basemul \
-      test_compress test_decompress
+      test_compress test_decompress test_poly_addsub
 
 test_cond_sub_q:
 	$(MAKE) -C tb/cond_sub_q
@@ -51,6 +51,9 @@ test_compress:
 
 test_decompress:
 	$(MAKE) -C tb/decompress
+
+test_poly_addsub:
+	$(MAKE) -C tb/poly_addsub
 
 # Waveform dumps — produces FST files viewable in GTKWave
 waves_cond_sub_q:
@@ -95,6 +98,9 @@ waves_compress:
 waves_decompress:
 	$(MAKE) -C tb/decompress WAVES=1
 
+waves_poly_addsub:
+	$(MAKE) -C tb/poly_addsub WAVES=1
+
 clean:
 	$(MAKE) -C tb/cond_sub_q clean
 	$(MAKE) -C tb/barrett_reduce clean
@@ -110,3 +116,4 @@ clean:
 	$(MAKE) -C tb/poly_basemul clean
 	$(MAKE) -C tb/compress clean
 	$(MAKE) -C tb/decompress clean
+	$(MAKE) -C tb/poly_addsub clean
