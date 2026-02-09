@@ -189,8 +189,65 @@ graph TD
 |--------|--------|-------------|
 | `basemul_unit` | Done | Single 2×2 basemul, combinational (3 Barrett reductions) |
 | `poly_basemul` | Done | Pointwise multiply in NTT domain (257 cycles) |
-| `compress` / `decompress` | Planned | Bit compression for ciphertext |
+| `compress` / `decompress` | Done | Bit compression for ciphertext (parameterized, all 5 D values) |
 | `kyber_top` | Planned | Top-level encaps/decaps controller |
+
+## Compress / Decompress
+
+Bit compression operations for Kyber ciphertext encoding (FIPS 203, Section 4.2.1).
+These map 12-bit coefficients in [0, q-1] to d-bit values (compress) and back (decompress),
+with controlled approximation error bounded by ceil(q / 2^(d+1)).
+
+### compress (combinational, parameterized by D)
+
+`Compress_q(x, d) = round(2^d · x / q) mod 2^d`
+
+Reuses the Barrett constant (V=20158) to extract the **quotient** instead of the remainder:
+
+```mermaid
+graph LR
+    subgraph "compress #(.D(D))"
+        X["x (12-bit)"] --> SHL["x << D (free wiring)"]
+        SHL --> ADD_HALF["+1664 (rounding)"]
+        ADD_HALF --> NUM["numerator (D+12 bits)"]
+        NUM --> MUL["× V=20158"]
+        MUL --> SHR[">> 26"]
+        SHR --> T["t (quotient estimate)"]
+
+        T --> TQ["t × Q"]
+        NUM --> R_SUB["-"]
+        TQ --> R_SUB
+        R_SUB --> R["r (13-bit remainder)"]
+        R --> CMP["r - Q"]
+        CMP --> CORR{{"borrow?"}}
+        CORR -->|"no: r≥q"| PLUS1["t + 1"]
+        CORR -->|"yes: r<q"| PASS["t"]
+        PLUS1 --> MOD["mod 2^D"]
+        PASS --> MOD
+        MOD --> RESULT["result (D bits)"]
+    end
+```
+
+### decompress (combinational, parameterized by D)
+
+`Decompress_q(y, d) = round(q · y / 2^d)`
+
+Trivially simple — multiply, add rounding constant, shift:
+
+```mermaid
+graph LR
+    subgraph "decompress #(.D(D))"
+        Y["y (D-bit)"] --> MUL["× Q=3329"]
+        MUL --> ADD["+2^(D-1) (rounding)"]
+        ADD --> SHR[">> D (free wiring)"]
+        SHR --> RESULT["result (12-bit)"]
+    end
+```
+
+**D values used in Kyber:** 1 (message), 4/5 (ciphertext v), 10/11 (ciphertext u).
+
+**Verification:** Exhaustive for all D values — 16,645 compress vectors, 3,122 decompress vectors,
+plus round-trip error bounds verified for every x in [0, q-1].
 
 ## FPGA Target Notes
 

@@ -9,6 +9,7 @@ KYBER_N = 256
 KYBER_N_INV = 3303     # 128^-1 mod 3329 (INTT scaling factor)
 BARRETT_V = 20158      # floor(2^26 / 3329)
 BARRETT_SHIFT = 26
+HALF_Q = 1664          # (q-1)/2, rounding constant for compress
 ZETA = 17              # Primitive 256th root of unity mod 3329
 
 
@@ -80,6 +81,28 @@ def mod_sub(a: int, b: int) -> int:
     assert 0 <= b < KYBER_Q, f"mod_sub input b={b} out of range [0, {KYBER_Q-1}]"
     diff = ((1 << 13) + a - b) if a < b else (a - b)
     return cond_add_q(diff & 0x1FFF)
+
+
+def compress_q(x: int, d: int) -> int:
+    """Compress: round(2^d * x / q) mod 2^d.
+
+    Integer form: floor(((x << d) + 1664) / q) mod 2^d
+    FIPS 203, Section 4.2.1.
+    """
+    assert 0 <= x < KYBER_Q, f"compress_q input x={x} out of range [0, {KYBER_Q-1}]"
+    assert d in (1, 4, 5, 10, 11), f"compress_q d={d} not a valid Kyber D value"
+    return (((x << d) + HALF_Q) // KYBER_Q) % (1 << d)
+
+
+def decompress_q(y: int, d: int) -> int:
+    """Decompress: round(q * y / 2^d).
+
+    Integer form: (q * y + (1 << (d-1))) >> d
+    FIPS 203, Section 4.2.1.
+    """
+    assert 0 <= y < (1 << d), f"decompress_q input y={y} out of range [0, {(1 << d) - 1}]"
+    assert d in (1, 4, 5, 10, 11), f"decompress_q d={d} not a valid Kyber D value"
+    return (KYBER_Q * y + (1 << (d - 1))) >> d
 
 
 def ntt_butterfly(even: int, odd: int, zeta: int) -> tuple:
