@@ -206,20 +206,25 @@ graph TD
 |--------|--------|-------------|
 | `kyber_top` (skeleton) | Done | 20-slot poly_ram bank (256×12 dual-port each), host port mux for coefficient-level I/O via host_slot/host_addr/host_din/host_dout, IDLE state only. 6 tests verifying host read/write, slot isolation, boundary values, overwrite, and out-of-range defense. |
 
-> **BRAM budget:** 20 (bank) + 1 (ntt_engine) + 2 (poly_basemul) = 23 out of 50 on Artix-7 XC7A35T.
+> **BRAM budget (5c):** 20 (bank) + 1 (ntt_engine) + 2 (poly_basemul) = 23 out of 50 on Artix-7 XC7A35T. (Grew to 24 in 5d with CBD sampler.)
 
-### Milestone 5d -- kyber_top Micro-Op Infrastructure
+### Milestone 5d -- kyber_top Micro-Op Infrastructure (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| COPY_TO/FROM_NTT | Planned | Copy 256 coefficients between RAM bank slot and ntt_engine ext port. 257 cycles each direction. |
-| COPY_TO/FROM_BM | Planned | Copy 256 coefficients between RAM bank slot and poly_basemul RAMs. 257 cycles each direction. |
-| RUN_NTT / RUN_BASEMUL | Planned | Start sub-engine, wait for done. |
-| POLY_ADD/SUB micro-ops | Planned | Connect poly_add/poly_sub to RAM bank slots via port mux. 258 cycles. |
-| COMPRESS/DECOMPRESS micro-ops | Planned | Combinational compress/decompress (D=1,4,10) fed during coefficient loop over RAM bank slot. 258 cycles. |
-| CBD_SAMPLE micro-op | Planned | Drive cbd_sampler via keccak_if squeeze interface. Absorb seed+nonce, squeeze 128 bytes. |
-| keccak_if port group | Planned | External hash interface at kyber_top boundary: absorb (valid/data/ready/last), squeeze (valid/data/ready), mode, start, ready. SHAKE256 only for initial implementation. |
+| COPY_TO/FROM_NTT | Done | Copy 256 coefficients between RAM bank slot and ntt_engine ext port. 257 cycles each direction. |
+| COPY_TO/FROM_BM | Done | Copy 256 coefficients between RAM bank slot and poly_basemul RAMs. 257 cycles each direction. |
+| RUN_NTT / RUN_BASEMUL | Done | Start sub-engine, wait for done. |
+| POLY_ADD/SUB micro-ops | Done | Direct mod_add/mod_sub on bank slots via Port A read + Port B write. 258 cycles. No poly_addsub instantiation needed. |
+| COMPRESS/DECOMPRESS micro-ops | Done | Combinational compress/decompress (D=1,4,10) fed during coefficient loop over RAM bank slots. 258 cycles. |
+| CBD_SAMPLE micro-op | Done | Two-phase: run cbd_sampler (128 bytes via external stream), then copy result to bank slot. ~386 cycles. External cbd_byte_valid/data/ready interface. |
 
-> **Note:** Each micro-op is independently testable. The testbench loads data into RAM bank slots, triggers a single micro-op, and verifies results against the Python oracle.
+> **Sub-engines instantiated:** ntt_engine (1), poly_basemul (1), cbd_sampler (1), mod_add (1), mod_sub (1), compress ×3 (D=1,4,10), decompress ×3 (D=1,4,10).
+>
+> **BRAM budget:** 20 (bank) + 1 (NTT) + 2 (basemul) + 1 (CBD) = 24 out of 50 on Artix-7 XC7A35T.
+>
+> **Opcodes:** NOP(0), COPY_TO_NTT(1), COPY_FROM_NTT(2), RUN_NTT(3), COPY_TO_BM_A(4), COPY_TO_BM_B(5), COPY_FROM_BM(6), RUN_BASEMUL(7), POLY_ADD(8), POLY_SUB(9), COMPRESS(10), DECOMPRESS(11), CBD_SAMPLE(12).
+>
+> **Verification:** 16 tests (6 host I/O + 10 micro-op), including end-to-end NTT→basemul→INTT schoolbook round-trip.
 
 ### Milestone 5e -- Encaps FSM
 | Module | Status | Description |
