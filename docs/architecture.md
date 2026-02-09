@@ -226,10 +226,15 @@ graph TD
 >
 > **Verification:** 16 tests (6 host I/O + 10 micro-op), including end-to-end NTT→basemul→INTT schoolbook round-trip.
 
-### Milestone 5e -- Encaps FSM
+### Milestone 5e -- Encaps FSM (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `encaps_ctrl` | Planned | ML-KEM-768 encapsulation: CBD noise sampling (7 polys), NTT(r), matrix-vector multiply A^T·r_hat, INTT, add noise, compress u (D=10) and v (D=4). ~49 micro-op steps, ~36k cycles at 100 MHz. Host preloads A_hat[3×3], t_hat[3], and message m. Keccak mocked in testbench. |
+| `encaps_ctrl` | Done | Standalone 93-micro-op sequencer FSM. 5 phases: CBD noise (7 ops), NTT(r) (9 ops), A_hat^T · r_hat + e1 → u (54 ops), t_hat^T · r_hat + e2 + m → v (19 ops), compress (4 ops). ~35k cycles at 100 MHz. |
+| `encaps_top` | Done | Thin wrapper wiring encaps_ctrl → kyber_top. Host I/O active when idle. CBD byte stream passed through. |
+
+> **Slot allocation:** 0-8: A_hat[j*3+i], 9-11: t_hat, 12: message, 13-15: r/r_hat, 16-18: e1 (then compressed u), 19: e2 (then compressed v). After encaps: u[0..2] uncompressed in slots 0-2, v uncompressed in slot 9, compressed u in slots 16-18 (D=10), compressed v in slot 19 (D=4).
+>
+> **Verification:** 6 tests — full oracle comparison (u, v), compress values, r_hat slot preservation, two-run independence, host I/O after done, message slot preservation.
 
 ### Milestone 5f -- Decaps, KeyGen, and Integration
 | Module | Status | Description |

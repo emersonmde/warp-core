@@ -265,6 +265,51 @@ def cbd_sample_eta2(input_bytes: list) -> list:
     return coeffs
 
 
+def encaps_inner(A_hat, t_hat, r, e1, e2, m):
+    """ML-KEM-768 encapsulation inner function (deterministic).
+
+    Performs the core encapsulation computation, matching the hardware
+    sequencer's operation order in encaps_ctrl.v.
+
+    Args:
+        A_hat: 3x3 list of NTT-domain polynomials. A_hat[j][i] is row j, col i.
+        t_hat: list of 3 NTT-domain polynomials (public key).
+        r: list of 3 time-domain noise polynomials (CBD sampled).
+        e1: list of 3 time-domain noise polynomials (CBD sampled).
+        e2: time-domain noise polynomial (CBD sampled).
+        m: time-domain message polynomial (decompressed from 32-byte message).
+
+    Returns:
+        (u, v): u is list of 3 uncompressed polynomials, v is uncompressed polynomial.
+        Caller applies compress separately if needed.
+    """
+    # Phase 1: NTT(r)
+    r_hat = [ntt_forward(r[i]) for i in range(3)]
+
+    # Phase 2: u = INTT(A_hat^T * r_hat) + e1
+    u = []
+    for i in range(3):
+        # Inner product: sum_j A_hat[j][i] * r_hat[j]
+        acc = poly_basemul(A_hat[0][i], r_hat[0])
+        for j in range(1, 3):
+            temp = poly_basemul(A_hat[j][i], r_hat[j])
+            acc = poly_add(acc, temp)
+        acc = ntt_inverse(acc)
+        acc = poly_add(acc, e1[i])
+        u.append(acc)
+
+    # Phase 3: v = INTT(t_hat^T * r_hat) + e2 + m
+    v_acc = poly_basemul(t_hat[0], r_hat[0])
+    for j in range(1, 3):
+        temp = poly_basemul(t_hat[j], r_hat[j])
+        v_acc = poly_add(v_acc, temp)
+    v = ntt_inverse(v_acc)
+    v = poly_add(v, e2)
+    v = poly_add(v, m)
+
+    return u, v
+
+
 def ntt_forward(coeffs: list) -> list:
     """Forward NTT (Cooley-Tukey, in-place).
 
