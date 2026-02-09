@@ -2,7 +2,7 @@
 
 ## Module Hierarchy
 
-Currently implemented modules (Milestones 1-3: modular arithmetic, NTT butterfly, NTT/INTT engine):
+Currently implemented modules (Milestones 1-4: modular arithmetic, NTT butterfly, NTT/INTT engine, basemul):
 
 ```mermaid
 graph TD
@@ -99,6 +99,67 @@ graph TD
 
 **FSM States:** `IDLE → LAYER_INIT → BF_READ → BF_WRITE → ... → [SCALE_INIT → SCALE_READ → SCALE_WRITE → ...] → DONE → IDLE`
 
+## Basemul
+
+Pointwise polynomial multiplication in the NTT domain. Kyber's NTT is "incomplete" —
+it decomposes a degree-256 polynomial into 128 degree-1 polynomials in Z_q[X]/(X^2 - γ_i).
+So "pointwise multiplication" is 128 independent 2×2 basemul operations, processed as
+64 pairs (each with +zeta and -zeta).
+
+### basemul_unit (combinational)
+
+Single 2×2 basemul: `(a0 + a1·X)(b0 + b1·X) mod (X² - ζ)`:
+- `c0 = a0·b0 + a1·b1·ζ mod q`
+- `c1 = a0·b1 + a1·b0 mod q`
+
+Optimized to 3 Barrett reductions (not 5) by accumulating products before reducing:
+
+```mermaid
+graph LR
+    subgraph "basemul_unit"
+        A1B1["a1 × b1 (24-bit)"] --> BR1["barrett_reduce #(24)"]
+        BR1 --> T1["t1 (12-bit)"]
+        T1 --> T1Z["t1 × zeta (24-bit)"]
+        A0B0["a0 × b0 (24-bit)"] --> ACC0["+"]
+        T1Z --> ACC0
+        ACC0 --> BR2["barrett_reduce #(25)"]
+        BR2 --> C0["c0"]
+
+        A0B1["a0 × b1 (24-bit)"] --> ACC1["+"]
+        A1B0["a1 × b0 (24-bit)"] --> ACC1
+        ACC1 --> BR3["barrett_reduce #(25)"]
+        BR3 --> C1["c1"]
+    end
+```
+
+### poly_basemul (sequential FSM)
+
+Wraps `basemul_unit` with two `poly_ram` instances and one `ntt_rom`:
+
+```mermaid
+graph TD
+    subgraph "poly_basemul"
+        EXT_A["a_addr/din/we"] --> MUXA["RAM A port mux"]
+        EXT_B["b_addr/din/we"] --> MUXB["RAM B port mux"]
+        FSM["FSM + addr gen"] --> MUXA
+        FSM --> MUXB
+        FSM --> ROM["ntt_rom (addrs 64..127)"]
+
+        MUXA --> RAMA["poly_ram A (result in-place)"]
+        MUXB --> RAMB["poly_ram B (read-only)"]
+
+        RAMA -->|"a0, a1"| BM["basemul_unit"]
+        RAMB -->|"b0, b1"| BM
+        ROM -->|"±zeta"| BM
+
+        BM -->|"c0, c1"| RAMA
+    end
+```
+
+**Timing:** 257 cycles (64 pairs × 4 cycles + 1 done). At 100 MHz: 2.57 µs.
+
+**FSM States:** `IDLE → READ_POS → WRITE_POS → READ_NEG → WRITE_NEG → ... → DONE → IDLE`
+
 ## Development Roadmap
 
 ### Milestone 1 -- Modular Arithmetic (complete)
@@ -123,10 +184,11 @@ graph TD
 | `poly_ram` | Done | True dual-port synchronous RAM, 256 x 12-bit |
 | `ntt_engine` | Done | Full 7-layer NTT/INTT FSM with address generation |
 
-### Milestone 4 -- Kyber Operations
+### Milestone 4 -- Kyber Operations (in progress)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `poly_basemul` | Planned | Pointwise multiply in NTT domain |
+| `basemul_unit` | Done | Single 2×2 basemul, combinational (3 Barrett reductions) |
+| `poly_basemul` | Done | Pointwise multiply in NTT domain (257 cycles) |
 | `compress` / `decompress` | Planned | Bit compression for ciphertext |
 | `kyber_top` | Planned | Top-level encaps/decaps controller |
 

@@ -137,6 +137,72 @@ def bitrev7(x: int) -> int:
 ZETAS = [pow(ZETA, bitrev7(k), KYBER_Q) for k in range(128)]
 
 
+def basemul(a0: int, a1: int, b0: int, b1: int, zeta: int) -> tuple:
+    """Single 2x2 basemul in Z_q[X]/(X^2 - zeta).
+
+    Computes (a0 + a1*X) * (b0 + b1*X) mod (X^2 - zeta):
+        c0 = a0*b0 + a1*b1*zeta   (mod q)
+        c1 = a0*b1 + a1*b0        (mod q)
+
+    Uses same Barrett reduction strategy as hardware:
+        t1   = barrett_reduce(a1 * b1)
+        acc0 = (a0 * b0) + (t1 * zeta)   → barrett_reduce
+        acc1 = (a0 * b1) + (a1 * b0)     → barrett_reduce
+    """
+    assert all(0 <= v < KYBER_Q for v in [a0, a1, b0, b1, zeta])
+    t1   = barrett_reduce(a1 * b1)
+    acc0 = (a0 * b0) + (t1 * zeta)
+    c0   = barrett_reduce(acc0)
+    acc1 = (a0 * b1) + (a1 * b0)
+    c1   = barrett_reduce(acc1)
+    return (c0, c1)
+
+
+def poly_basemul(a: list, b: list) -> list:
+    """Pointwise polynomial multiplication in the NTT domain.
+
+    Each pair of coefficients [2i, 2i+1] represents a degree-1 polynomial
+    in Z_q[X]/(X^2 - gamma_i). There are 128 such pairs, processed as
+    64 groups of 2 basemuls (one with +zeta, one with -zeta).
+
+    Matches the pq-crystals C reference (poly.c: poly_basemul_montgomery).
+    """
+    assert len(a) == KYBER_N and len(b) == KYBER_N
+    r = [0] * KYBER_N
+
+    for i in range(64):
+        zeta = ZETAS[64 + i]
+        neg_zeta = KYBER_Q - zeta  # -zeta mod q
+
+        # +zeta basemul on coefficients [4i, 4i+1]
+        r[4*i], r[4*i+1] = basemul(a[4*i], a[4*i+1], b[4*i], b[4*i+1], zeta)
+
+        # -zeta basemul on coefficients [4i+2, 4i+3]
+        r[4*i+2], r[4*i+3] = basemul(a[4*i+2], a[4*i+3], b[4*i+2], b[4*i+3], neg_zeta)
+
+    return r
+
+
+def schoolbook_mul(a: list, b: list) -> list:
+    """Schoolbook polynomial multiplication mod (X^256 + 1).
+
+    Used for end-to-end verification: INTT(basemul(NTT(a), NTT(b))) should
+    equal schoolbook_mul(a, b).
+    """
+    assert len(a) == KYBER_N and len(b) == KYBER_N
+    c = [0] * (2 * KYBER_N)
+    for i in range(KYBER_N):
+        for j in range(KYBER_N):
+            c[i + j] += a[i] * b[j]
+
+    # Reduce mod X^256 + 1: c[i+256] wraps with negation
+    r = [0] * KYBER_N
+    for i in range(KYBER_N):
+        r[i] = (c[i] - c[i + KYBER_N]) % KYBER_Q
+
+    return r
+
+
 def ntt_forward(coeffs: list) -> list:
     """Forward NTT (Cooley-Tukey, in-place).
 
