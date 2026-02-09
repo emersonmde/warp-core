@@ -201,10 +201,10 @@ graph TD
 |--------|--------|-------------|
 | `cbd_sampler` | Done | Consumes 128 random bytes via byte stream interface, produces 256 CBD η=2 coefficients in [0, q-1]. 129 cycles (byte_valid always high). Dual-port write: both nibbles per byte written simultaneously. |
 
-### Milestone 5c -- kyber_top RAM Bank and Host I/O
+### Milestone 5c -- kyber_top RAM Bank and Host I/O (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `kyber_top` (skeleton) | Planned | 20-slot poly_ram bank (256×12 dual-port each), host port mux for coefficient-level I/O via host_slot/host_addr/host_din/host_dout, IDLE state only. Verifies host can write and read all 20 slots independently. |
+| `kyber_top` (skeleton) | Done | 20-slot poly_ram bank (256×12 dual-port each), host port mux for coefficient-level I/O via host_slot/host_addr/host_din/host_dout, IDLE state only. 6 tests verifying host read/write, slot isolation, boundary values, overwrite, and out-of-range defense. |
 
 > **BRAM budget:** 20 (bank) + 1 (ntt_engine) + 2 (poly_basemul) = 23 out of 50 on Artix-7 XC7A35T.
 
