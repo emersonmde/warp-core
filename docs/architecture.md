@@ -2,7 +2,7 @@
 
 ## Module Hierarchy
 
-Currently implemented modules (Milestones 1-2: modular arithmetic + NTT butterfly):
+Currently implemented modules (Milestones 1-3: modular arithmetic, NTT butterfly, NTT/INTT engine):
 
 ```mermaid
 graph TD
@@ -61,6 +61,44 @@ graph TD
     end
 ```
 
+## NTT/INTT Engine
+
+The NTT engine is a sequential FSM that performs 7 layers of 128 butterflies each.
+It contains the polynomial RAM, twiddle factor ROM, and both butterfly types internally.
+
+```mermaid
+graph TD
+    subgraph "ntt_engine"
+        EXT["ext_addr/din/we"] --> MUX["RAM port mux"]
+        FSM["FSM + addr gen"] --> MUX
+
+        MUX --> RAM["poly_ram (256x12 dual-port)"]
+        FSM --> ROM["ntt_rom (128x12)"]
+
+        RAM -->|dout_a: even| CT["ntt_butterfly (CT)"]
+        RAM -->|dout_b: odd| CT
+        ROM -->|zeta| CT
+
+        RAM -->|dout_a: even| GS["intt_butterfly (GS)"]
+        RAM -->|dout_b: odd| GS
+        ROM -->|zeta| GS
+
+        CT -->|"mode=0"| BMUX["butterfly mux"]
+        GS -->|"mode=1"| BMUX
+        BMUX --> RAM
+
+        RAM -->|dout_a| SCALE["barrett_reduce (×3303)"]
+        SCALE -->|"INTT scaling"| RAM
+    end
+```
+
+**Timing:**
+- Forward NTT: 1800 cycles (7 layers × 257 + 1 done)
+- Inverse NTT: 2313 cycles (1800 + 1 init + 512 scale)
+- At 100 MHz: 18 µs / 23 µs per NTT/INTT
+
+**FSM States:** `IDLE → LAYER_INIT → BF_READ → BF_WRITE → ... → [SCALE_INIT → SCALE_READ → SCALE_WRITE → ...] → DONE → IDLE`
+
 ## Development Roadmap
 
 ### Milestone 1 -- Modular Arithmetic (complete)
@@ -77,12 +115,13 @@ graph TD
 | `mod_sub` | Done | Modular subtraction in Z_q |
 | `ntt_butterfly` | Done | Cooley-Tukey butterfly (multiply + add/sub) |
 
-### Milestone 3 -- NTT/INTT Engine
+### Milestone 3 -- NTT/INTT Engine (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `ntt_rom` | Planned | Twiddle factor (zeta) lookup ROM |
-| `ntt_engine` | Planned | Full 7-layer NTT with address generation |
-| `poly_ram` | Planned | Dual-port coefficient RAM (256 x 12-bit) |
+| `intt_butterfly` | Done | Gentleman-Sande inverse butterfly (add/sub + multiply) |
+| `ntt_rom` | Done | Twiddle factor (zeta) lookup ROM, 128 x 12-bit |
+| `poly_ram` | Done | True dual-port synchronous RAM, 256 x 12-bit |
+| `ntt_engine` | Done | Full 7-layer NTT/INTT FSM with address generation |
 
 ### Milestone 4 -- Kyber Operations
 | Module | Status | Description |

@@ -14,3 +14,8 @@ localparam COEFF_WIDTH   = 12;         // ceil(log2(3329)) = 12 bits for [0, 332
 // Safe for inputs up to 77,517,490 (~27 bits).
 localparam BARRETT_V     = 15'd20158;  // floor(2^26 / 3329)
 localparam BARRETT_SHIFT = 26;
+
+// Inverse NTT scaling factor: 128^-1 mod 3329 = 3303
+// After 7 INTT layers, multiply all 256 coefficients by this.
+// Source: pow(128, -1, 3329) verified in ref/verify_ntt.py
+localparam KYBER_N_INV   = 12'd3303;
