@@ -6,14 +6,16 @@ All arithmetic operates in Z_q where q = 3329.
 
 ## Status
 
-**Milestone 1 (Modular Arithmetic) — complete.**
+**14 modules, 50 tests, all passing.** Milestones 1–4 complete.
 
-| Module | Description | Verification |
-|--------|-------------|--------------|
-| `cond_sub_q` | Conditional subtraction, [0, 2q-1] → [0, q-1] | Exhaustive |
-| `barrett_reduce` | Barrett reduction mod 3329, parameterized width | Exhaustive (16-bit) + sampled (27-bit) |
+| Milestone | Modules | Description |
+|-----------|---------|-------------|
+| 1. Modular Arithmetic | `cond_sub_q`, `barrett_reduce` | Conditional subtraction, Barrett reduction mod 3329 |
+| 2. NTT Butterfly | `cond_add_q`, `mod_add`, `mod_sub`, `ntt_butterfly` | Cooley-Tukey butterfly datapath |
+| 3. NTT/INTT Engine | `intt_butterfly`, `ntt_rom`, `poly_ram`, `ntt_engine` | 7-layer sequential NTT/INTT FSM (1800/2313 cycles) |
+| 4. Kyber Operations | `basemul_unit`, `poly_basemul`, `compress`, `decompress` | Pointwise multiply, bit compression (FIPS 203 §4.2.1) |
 
-See [docs/architecture.md](docs/architecture.md) for the full roadmap and block diagrams.
+Next: Milestones 5–6 build toward `kyber_top` (ML-KEM-768 KeyGen/Encaps/Decaps). See [docs/architecture.md](docs/architecture.md) for the full roadmap, block diagrams, and [docs/kyber_top_plan.md](docs/kyber_top_plan.md) for the detailed implementation plan.
 
 ## Prerequisites
 

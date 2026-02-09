@@ -184,13 +184,95 @@ graph TD
 | `poly_ram` | Done | True dual-port synchronous RAM, 256 x 12-bit |
 | `ntt_engine` | Done | Full 7-layer NTT/INTT FSM with address generation |
 
-### Milestone 4 -- Kyber Operations (in progress)
+### Milestone 4 -- Kyber Operations (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
 | `basemul_unit` | Done | Single 2×2 basemul, combinational (3 Barrett reductions) |
 | `poly_basemul` | Done | Pointwise multiply in NTT domain (257 cycles) |
 | `compress` / `decompress` | Done | Bit compression for ciphertext (parameterized, all 5 D values) |
-| `kyber_top` | Planned | Top-level encaps/decaps controller |
+
+### Milestone 5a -- Polynomial Add/Sub
+| Module | Status | Description |
+|--------|--------|-------------|
+| `poly_add` | Planned | Sequential FSM, reads two RAM port groups, writes mod_add result. 258 cycles. |
+| `poly_sub` | Planned | Sequential FSM, reads two RAM port groups, writes mod_sub result. 258 cycles. |
+
+### Milestone 5b -- CBD Sampler
+| Module | Status | Description |
+|--------|--------|-------------|
+| `cbd_sampler` | Planned | Consumes 128 random bytes via byte stream interface, produces 256 CBD η=2 coefficients in [0, q-1]. ~130 cycles excluding byte source latency. |
+
+### Milestone 5c -- kyber_top RAM Bank and Host I/O
+| Module | Status | Description |
+|--------|--------|-------------|
+| `kyber_top` (skeleton) | Planned | 20-slot poly_ram bank (256×12 dual-port each), host port mux for coefficient-level I/O via host_slot/host_addr/host_din/host_dout, IDLE state only. Verifies host can write and read all 20 slots independently. |
+
+> **BRAM budget:** 20 (bank) + 1 (ntt_engine) + 2 (poly_basemul) = 23 out of 50 on Artix-7 XC7A35T.
+
+### Milestone 5d -- kyber_top Micro-Op Infrastructure
+| Module | Status | Description |
+|--------|--------|-------------|
+| COPY_TO/FROM_NTT | Planned | Copy 256 coefficients between RAM bank slot and ntt_engine ext port. 257 cycles each direction. |
+| COPY_TO/FROM_BM | Planned | Copy 256 coefficients between RAM bank slot and poly_basemul RAMs. 257 cycles each direction. |
+| RUN_NTT / RUN_BASEMUL | Planned | Start sub-engine, wait for done. |
+| POLY_ADD/SUB micro-ops | Planned | Connect poly_add/poly_sub to RAM bank slots via port mux. 258 cycles. |
+| COMPRESS/DECOMPRESS micro-ops | Planned | Combinational compress/decompress (D=1,4,10) fed during coefficient loop over RAM bank slot. 258 cycles. |
+| CBD_SAMPLE micro-op | Planned | Drive cbd_sampler via keccak_if squeeze interface. Absorb seed+nonce, squeeze 128 bytes. |
+| keccak_if port group | Planned | External hash interface at kyber_top boundary: absorb (valid/data/ready/last), squeeze (valid/data/ready), mode, start, ready. SHAKE256 only for initial implementation. |
+
+> **Note:** Each micro-op is independently testable. The testbench loads data into RAM bank slots, triggers a single micro-op, and verifies results against the Python oracle.
+
+### Milestone 5e -- Encaps FSM
+| Module | Status | Description |
+|--------|--------|-------------|
+| `encaps_ctrl` | Planned | ML-KEM-768 encapsulation: CBD noise sampling (7 polys), NTT(r), matrix-vector multiply A^T·r_hat, INTT, add noise, compress u (D=10) and v (D=4). ~49 micro-op steps, ~36k cycles at 100 MHz. Host preloads A_hat[3×3], t_hat[3], and message m. Keccak mocked in testbench. |
+
+### Milestone 5f -- Decaps, KeyGen, and Integration
+| Module | Status | Description |
+|--------|--------|-------------|
+| `decaps_ctrl` | Planned | ML-KEM-768 decapsulation: decompress ciphertext, decrypt via s_hat^T·NTT(u), recover m', full re-encryption, constant-time compare. ~80 micro-op steps, ~72k cycles. Sets decaps_match flag. |
+| `keygen_ctrl` | Planned | ML-KEM-768 key generation: CBD sample s and e, NTT(s), A·s_hat + NTT(e) → t_hat. Simpler than Encaps. |
+| Round-trip test | Planned | Full KeyGen → Encaps → Decaps produces matching shared secret. Multiple random vectors with deterministic seeds. |
+
+### Milestone 6 -- NIST ACVP Compliance Testing
+| Module | Status | Description |
+|--------|--------|-------------|
+| ACVP keyGen vectors | Planned | Deterministic keygen from (d, z) seeds, verify ek and dk against ML-KEM-keyGen-FIPS203 test vectors from NIST ACVP-Server repository (usnistgov/ACVP-Server, gen-val/json-files). |
+| ACVP encapDecap vectors | Planned | Encapsulation and decapsulation test vectors from ML-KEM-encapDecap-FIPS203. Hash responses provided via cocotb testbench driving keccak_if with Python SHAKE/SHA3 implementation. |
+
+> **Note:** FIPS 203 splits algorithms into deterministic inner functions accepting randomness as input (enabling reproducible testing) and outer functions that generate randomness. Tests target the deterministic inner functions. All ML-KEM-768 test cases from the ACVP sample vectors must pass.
+
+### Milestone 7 -- Design Documentation
+| Module | Status | Description |
+|--------|--------|-------------|
+| `docs/design_decisions.md` | Planned | Technical design document covering: Barrett constant V=20158 vs C reference's 20159 (unsigned hardware adaptation with exhaustive verification); basemul optimization from 5 to 3 Barrett reductions (accumulate before reducing, safe within Barrett's 77.5M input range); compress via Barrett quotient extraction (reusing Barrett constant for division-by-q without dedicated divider); Python oracle verification strategy (operation-by-operation mirroring with range assertions, schoolbook_mul for algebraic identity verification); NTT engine address generation (shift-based start address is free wiring in hardware, dual butterfly instantiation tradeoff); unsigned-only datapath philosophy (eliminates signed comparison and sign-extension logic). |
+| README.md updates | Planned | Add Design Decisions section pointing to docs/design_decisions.md. Update module count and milestone status. Add FPGA resource budget summary. |
+
+### Milestone 8 -- Performance Optimizations
+| Module | Status | Description |
+|--------|--------|-------------|
+| Pipelined NTT butterfly | Planned | Register Barrett multiplication output to break critical path for 200 MHz on Artix-7. Current combinational path: zeta*odd → Barrett multiply → shift → tq → subtract → cond_sub_q. |
+| Overlapped butterfly R/W | Planned | With true dual-port RAM, read next butterfly operands while writing current results. Approaches 1 cycle per butterfly instead of 2. |
+| Dual-port INTT scaling | Planned | Use both RAM ports during scaling pass to process 2 coefficients per cycle, halving from 512 to 256 cycles. |
+| Vivado synthesis | Planned | Target XC7A35T. Timing reports, DSP48E1 mapping verification (Barrett multiplies to DSP slices), resource utilization baseline. |
+
+### Milestone 9 -- ML-DSA (Dilithium) NTT Core
+| Module | Status | Description |
+|--------|--------|-------------|
+| Parameterized arithmetic | Planned | Make kyber_pkg.vh constants (Q, BARRETT_V, COEFF_WIDTH) selectable between Kyber (q=3329, 12-bit) and Dilithium (q=8380417, 23-bit) at compile time. |
+| Dilithium NTT/INTT | Planned | Adapted NTT engine for Dilithium's field: different primitive root of unity, twiddle factors, widened poly_ram to 23-bit. Note: 23-bit q requires careful DSP48E1 planning — 25×18 multipliers may need split for 46-bit Barrett products. |
+| Dilithium basemul | Planned | Adapted basemul_unit for wider coefficients. |
+| ML-DSA ACVP vectors | Planned | Verify NTT intermediate values against FIPS 204 test vectors. |
+
+> **Note:** Goal: single RTL codebase that synthesizes for either ML-KEM or ML-DSA via a top-level parameter, sharing NTT butterfly and Barrett reduction datapath.
+
+### Milestone 10 -- SoC Integration
+| Module | Status | Description |
+|--------|--------|-------------|
+| AXI-Lite wrapper | Planned | Register interface wrapping coefficient-level I/O for standard FPGA bus integration. |
+| DMA support | Planned | Bulk polynomial load/store for reduced host interaction overhead. |
+| Keccak integration | Planned | Wire open-source or vendor Keccak-f[1600] core to keccak_if port group. |
+| Example SoC | Planned | Integration on Artix-7 with soft processor (MicroBlaze or RISC-V) demonstrating full ML-KEM-768 key exchange. Resource utilization and Fmax benchmarks. |
 
 ## Compress / Decompress
 
