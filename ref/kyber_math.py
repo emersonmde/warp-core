@@ -265,6 +265,80 @@ def cbd_sample_eta2(input_bytes: list) -> list:
     return coeffs
 
 
+def keygen_inner(A_hat, s_noise, e_noise):
+    """ML-KEM-768 key generation inner function (deterministic).
+
+    Computes t_hat = A_hat * NTT(s) + NTT(e) in the NTT domain.
+
+    Args:
+        A_hat: 3x3 list of NTT-domain polynomials. A_hat[j][i] is row j, col i.
+        s_noise: list of 3 time-domain noise polynomials (CBD sampled).
+        e_noise: list of 3 time-domain noise polynomials (CBD sampled).
+
+    Returns:
+        (t_hat, s_hat): t_hat is list of 3 NTT-domain polynomials,
+                        s_hat is list of 3 NTT-domain polynomials (secret key).
+
+    Note: keygen computes A * s_hat (row access), while encaps computes
+    A^T * r_hat (column access). Same A_hat layout, different traversal.
+    """
+    # NTT(s) and NTT(e)
+    s_hat = [ntt_forward(s_noise[i]) for i in range(3)]
+    e_hat = [ntt_forward(e_noise[i]) for i in range(3)]
+
+    # t_hat[i] = sum_j A_hat[i][j] * s_hat[j] + e_hat[i]  (row i of A)
+    t_hat = []
+    for i in range(3):
+        acc = poly_basemul(A_hat[i][0], s_hat[0])
+        for j in range(1, 3):
+            temp = poly_basemul(A_hat[i][j], s_hat[j])
+            acc = poly_add(acc, temp)
+        acc = poly_add(acc, e_hat[i])
+        t_hat.append(acc)
+
+    return t_hat, s_hat
+
+
+def decrypt_inner(s_hat, u_compressed, v_compressed):
+    """ML-KEM-768 decryption inner function (K-PKE.Decrypt).
+
+    Decompresses ciphertext, computes inner product, subtracts, compresses
+    to recover the message.
+
+    Args:
+        s_hat: list of 3 NTT-domain polynomials (secret key).
+        u_compressed: list of 3 polynomials, each coefficient compressed with D=10.
+        v_compressed: polynomial with coefficients compressed with D=4.
+
+    Returns:
+        m_prime: list of 256 values in {0, 1} — recovered message bits.
+    """
+    # Decompress u (D=10) and v (D=4)
+    u = [
+        [decompress_q(c, 10) for c in u_compressed[i]]
+        for i in range(3)
+    ]
+    v = [decompress_q(c, 4) for c in v_compressed]
+
+    # NTT(u)
+    u_hat = [ntt_forward(u[i]) for i in range(3)]
+
+    # Inner product: w = INTT(s_hat^T * u_hat)
+    acc = poly_basemul(s_hat[0], u_hat[0])
+    for j in range(1, 3):
+        temp = poly_basemul(s_hat[j], u_hat[j])
+        acc = poly_add(acc, temp)
+    w = ntt_inverse(acc)
+
+    # v - w
+    diff = poly_sub(v, w)
+
+    # Compress D=1 → message bits
+    m_prime = [compress_q(c, 1) for c in diff]
+
+    return m_prime
+
+
 def encaps_inner(A_hat, t_hat, r, e1, e2, m):
     """ML-KEM-768 encapsulation inner function (deterministic).
 

@@ -236,12 +236,22 @@ graph TD
 >
 > **Verification:** 6 tests — full oracle comparison (u, v), compress values, r_hat slot preservation, two-run independence, host I/O after done, message slot preservation.
 
-### Milestone 5f -- Decaps, KeyGen, and Integration
+### Milestone 5f -- KeyGen, Decrypt, and Round-Trip Integration (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `decaps_ctrl` | Planned | ML-KEM-768 decapsulation: decompress ciphertext, decrypt via s_hat^T·NTT(u), recover m', full re-encryption, constant-time compare. ~80 micro-op steps, ~72k cycles. Sets decaps_match flag. |
-| `keygen_ctrl` | Planned | ML-KEM-768 key generation: CBD sample s and e, NTT(s), A·s_hat + NTT(e) → t_hat. Simpler than Encaps. |
-| Round-trip test | Planned | Full KeyGen → Encaps → Decaps produces matching shared secret. Multiple random vectors with deterministic seeds. |
+| `keygen_ctrl` | Done | 69-micro-op sequencer for ML-KEM-768 KeyGen: CBD sample s[3]+e[3] (6 ops), NTT all 6 (18 ops), matmul A·s_hat+e_hat (3 rows × 15 ops = 45 ops). ~28k cycles. |
+| `keygen_top` | Done | Thin wrapper wiring keygen_ctrl → kyber_top. Host I/O active when idle. CBD byte stream for 768 bytes (6 polys). |
+| `decaps_ctrl` | Done | 32-micro-op sequencer for K-PKE.Decrypt: decompress u(D=10)+v(D=4) (4 ops), NTT(u) (9 ops), inner product s_hat^T·u_hat (14 ops), INTT+sub+compress(D=1) (5 ops). ~15k cycles. |
+| `decaps_top` | Done | Thin wrapper wiring decaps_ctrl → kyber_top. No CBD stream needed. Host preloads compressed ciphertext + s_hat. |
+| Round-trip test | Done | Full oracle KeyGen → oracle Encaps → hardware Decrypt recovers original message (256 bits, zero errors). |
+
+> **KeyGen slot allocation:** 0-8: A_hat[i*3+j] (row-major), 9-11: s→s_hat (CBD, NTT'd), 12-14: e→e_hat (CBD, NTT'd). After keygen: t_hat[0..2] in slots 0,3,6; s_hat in slots 9-11.
+>
+> **Decrypt slot allocation:** 0-2: compressed u (D=10), 3: compressed v (D=4), 4: m' output, 9-11: s_hat. After decrypt: m' in slot 4 (256 binary coefficients).
+>
+> **Design decision:** decaps_ctrl performs K-PKE.Decrypt only (~32 ops), not full ML-KEM.Decaps (~80+ ops). Re-encryption is orchestrated by the host using encaps_top separately. This avoids needing a pause/resume mechanism for host-side SHAKE computation mid-operation. Hardware constant-time compare deferred to Milestone 6 (when Keccak core enables single-invocation decaps).
+>
+> **Verification:** 5 keygen tests + 5 decrypt tests (including round-trip). 93 total tests across 21 modules.
 
 ### Milestone 6 -- NIST ACVP Compliance Testing
 | Module | Status | Description |
