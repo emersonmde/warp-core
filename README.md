@@ -6,7 +6,7 @@ All arithmetic operates in Z_q where q = 3329.
 
 ## Status
 
-**14 modules, 50 tests, all passing.** Milestones 1–4 complete.
+**24 modules, 96 hardware tests + 60 ACVP oracle tests, all passing.** Milestones 1-6 complete.
 
 | Milestone | Modules | Description |
 |-----------|---------|-------------|
@@ -14,8 +14,10 @@ All arithmetic operates in Z_q where q = 3329.
 | 2. NTT Butterfly | `cond_add_q`, `mod_add`, `mod_sub`, `ntt_butterfly` | Cooley-Tukey butterfly datapath |
 | 3. NTT/INTT Engine | `intt_butterfly`, `ntt_rom`, `poly_ram`, `ntt_engine` | 7-layer sequential NTT/INTT FSM (1800/2313 cycles) |
 | 4. Kyber Operations | `basemul_unit`, `poly_basemul`, `compress`, `decompress` | Pointwise multiply, bit compression (FIPS 203 §4.2.1) |
+| 5. Poly-level Ops | `poly_addsub`, `cbd_sampler`, `kyber_top`, `encaps_ctrl/top`, `keygen_ctrl/top`, `decaps_ctrl/top` | 20-slot RAM bank, micro-op FSM, ML-KEM-768 KeyGen/Encaps/Decrypt controllers |
+| 6. ACVP Compliance | `kyber_acvp.py`, ACVP testbenches | 60 NIST ACVP vectors (25 keyGen + 25 encaps + 10 decaps), bit-exact FIPS 203 compliance |
 
-Next: Milestones 5–6 build toward `kyber_top` (ML-KEM-768 KeyGen/Encaps/Decaps). See [docs/architecture.md](docs/architecture.md) for the full roadmap, block diagrams, and [docs/kyber_top_plan.md](docs/kyber_top_plan.md) for the detailed implementation plan.
+Next: Milestone 8 targets performance optimizations — pipelined butterfly, overlapped read/write, and Vivado synthesis on XC7A35T. See [docs/architecture.md](docs/architecture.md) for the full roadmap and block diagrams.
 
 ## Prerequisites
 
@@ -30,9 +32,13 @@ pip install -r requirements-test.txt
 ## Build & Test
 
 ```bash
-make test                    # Run all testbenches
+make test                    # Run all testbenches (96 hardware + 60 ACVP oracle)
 make test_cond_sub_q         # Run one module's tests
 make test_barrett_reduce
+make test_acvp_oracle        # Run Python ACVP oracle tests only
+make test_acvp_keygen        # Run hardware keygen against 25 ACVP vectors
+make test_acvp_encaps        # Run hardware encaps against 25 ACVP vectors
+make test_acvp_decaps        # Run hardware decaps against 10 ACVP vectors
 ```
 
 ## Waveforms
@@ -52,8 +58,25 @@ rtl/kyber_pkg.vh   Shared parameters (Q, N, Barrett constants)
 tb/                cocotb testbenches (one directory per module)
 tb/common.mk       Shared cocotb Makefile boilerplate
 ref/               Python reference implementations (test oracles)
+ref/kyber_acvp.py  FIPS 203 encoding/hashing layer for ACVP testing
 docs/              Architecture diagrams and design notes
 ```
+
+## Design Decisions
+
+Key hardware design decisions are documented in [docs/design_decisions.md](docs/design_decisions.md), covering:
+
+- Barrett constant V=20158 (floor) vs. the C reference's V=20159 (ceiling)
+- Basemul optimization from 5 to 3 Barrett reductions
+- Compress via Barrett quotient extraction (no hardware divider)
+- Shift-based NTT address generation (zero DSP usage)
+- 2-cycle read/write butterfly pattern for synchronous RAM
+- Separate CT/GS butterfly instantiation (mux outside critical path)
+- Direct operations on RAM bank (saves 2-3 BRAMs)
+- CBD dual-port write trick (halves sampling time)
+- Unsigned-only datapath philosophy
+- Flat sequencer ROM for algorithm controllers
+- ACVP compliance testing strategy
 
 ## Design Notes
 

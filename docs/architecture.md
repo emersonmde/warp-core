@@ -264,11 +264,11 @@ graph TD
 
 > **Note:** FIPS 203 splits algorithms into deterministic inner functions accepting randomness as input (enabling reproducible testing) and outer functions that generate randomness. The hardware tests derive exact per-vector inputs (A_hat, CBD bytes, compressed coefficients) from ACVP seeds using Python SHAKE/SHA3, feed them to hardware, then encode hardware outputs back to byte-level for comparison. All 60 ML-KEM-768 ACVP test cases pass.
 
-### Milestone 7 -- Design Documentation
+### Milestone 7 -- Design Documentation (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| `docs/design_decisions.md` | Planned | Technical design document covering: Barrett constant V=20158 vs C reference's 20159 (unsigned hardware adaptation with exhaustive verification); basemul optimization from 5 to 3 Barrett reductions (accumulate before reducing, safe within Barrett's 77.5M input range); compress via Barrett quotient extraction (reusing Barrett constant for division-by-q without dedicated divider); Python oracle verification strategy (operation-by-operation mirroring with range assertions, schoolbook_mul for algebraic identity verification); NTT engine address generation (shift-based start address is free wiring in hardware, dual butterfly instantiation tradeoff); unsigned-only datapath philosophy (eliminates signed comparison and sign-extension logic). |
-| README.md updates | Planned | Add Design Decisions section pointing to docs/design_decisions.md. Update module count and milestone status. Add FPGA resource budget summary. |
+| `docs/design_decisions.md` | Done | Technical design document with 12 sections: Barrett V=20158 (floor vs ceiling), subtract-and-select pattern, basemul 3-Barrett optimization, compress via Barrett quotient extraction, shift-based NTT address generation, 2-cycle read/write butterfly pattern, separate CT/GS instantiation, direct operations on RAM bank, CBD dual-port write trick, unsigned-only datapath philosophy, flat sequencer ROM, ACVP compliance testing strategy. |
+| README.md updates | Done | Updated status (24 modules, 96+60 tests), expanded milestone table (1-6), added Design Decisions section, added ACVP testing commands. |
 
 ### Milestone 8 -- Performance Optimizations
 | Module | Status | Description |
