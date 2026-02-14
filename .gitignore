@@ -35,6 +35,9 @@ results.xml
 .vscode/
 .idea/
 
+# ACVP test vectors (downloaded from NIST)
+ref/acvp_vectors/
+
 # OS
 .DS_Store
 Thumbs.db

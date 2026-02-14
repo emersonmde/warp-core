@@ -253,13 +253,16 @@ graph TD
 >
 > **Verification:** 5 keygen tests + 5 decrypt tests (including round-trip). 93 total tests across 21 modules.
 
-### Milestone 6 -- NIST ACVP Compliance Testing
+### Milestone 6 -- NIST ACVP Compliance Testing (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| ACVP keyGen vectors | Planned | Deterministic keygen from (d, z) seeds, verify ek and dk against ML-KEM-keyGen-FIPS203 test vectors from NIST ACVP-Server repository (usnistgov/ACVP-Server, gen-val/json-files). |
-| ACVP encapDecap vectors | Planned | Encapsulation and decapsulation test vectors from ML-KEM-encapDecap-FIPS203. Hash responses provided via cocotb testbench driving keccak_if with Python SHAKE/SHA3 implementation. |
+| `ref/kyber_acvp.py` | Complete | FIPS 203 encoding layer: ByteEncode/ByteDecode (Algorithms 4-5), hash primitives (G/H/J/PRF via hashlib SHA3/SHAKE), SampleNTT rejection sampling (Algorithm 6), full K-PKE and ML-KEM algorithm wrappers (Algorithms 13-18). |
+| `ref/test_acvp_oracle.py` | Complete | Pure Python oracle validation against all ML-KEM-768 ACVP vectors: 25 keyGen + 25 encapsulation + 10 decapsulation = 60 vectors. Downloads from usnistgov/ACVP-Server, caches in ref/acvp_vectors/. |
+| `tb/acvp_keygen/` | Complete | Hardware keygen ACVP test: expands ACVP seeds via SHAKE/SHA3, loads A_hat and CBD bytes into keygen_top, reads back t_hat/s_hat, ByteEncodes to ek/dk, byte-compares against ACVP expected. 25 vectors. |
+| `tb/acvp_encaps/` | Complete | Hardware encaps ACVP test: parses ek, expands A_hat, derives CBD bytes from encryption randomness r, loads into encaps_top, reads compressed ciphertext, ByteEncodes to c, compares c and K against ACVP expected. 25 vectors. |
+| `tb/acvp_decaps/` | Complete | Hardware decaps ACVP test: parses dk/c, loads s_hat and compressed ciphertext into decaps_top, reads m', performs Fujisaki-Okamoto re-encryption check in Python, compares K against ACVP expected. 10 vectors (includes implicit rejection cases). |
 
-> **Note:** FIPS 203 splits algorithms into deterministic inner functions accepting randomness as input (enabling reproducible testing) and outer functions that generate randomness. Tests target the deterministic inner functions. All ML-KEM-768 test cases from the ACVP sample vectors must pass.
+> **Note:** FIPS 203 splits algorithms into deterministic inner functions accepting randomness as input (enabling reproducible testing) and outer functions that generate randomness. The hardware tests derive exact per-vector inputs (A_hat, CBD bytes, compressed coefficients) from ACVP seeds using Python SHAKE/SHA3, feed them to hardware, then encode hardware outputs back to byte-level for comparison. All 60 ML-KEM-768 ACVP test cases pass.
 
 ### Milestone 7 -- Design Documentation
 | Module | Status | Description |
