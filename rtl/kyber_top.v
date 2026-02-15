@@ -7,7 +7,7 @@
 // Sub-engines: ntt_engine, poly_basemul, cbd_sampler (each with internal RAM).
 // Direct ops: mod_add, mod_sub, compress(D=1,4,10), decompress(D=1,4,10).
 //
-// BRAM budget: 20 (bank) + 1 (NTT) + 2 (basemul) + 1 (CBD) = 24 RAMB18E1.
+// BRAM budget: 20 (bank) + 2 (NTT ping-pong) + 2 (basemul) + 1 (CBD) = 25 RAMB18E1.
 
 `include "kyber_pkg.vh"
 

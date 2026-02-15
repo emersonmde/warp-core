@@ -222,30 +222,32 @@ async def test_known_vectors(dut):
 
 @cocotb.test()
 async def test_timing(dut):
-    """Verify expected cycle counts."""
+    """Verify expected cycle counts for ping-pong NTT engine."""
     await init(dut)
 
     # Load a simple polynomial
     poly = [i % KYBER_Q for i in range(KYBER_N)]
     await load_poly(dut, poly)
 
-    # Forward NTT timing
-    # 7 layers × LAYER_INIT(1) + 128 butterflies × 2 cycles) + S_DONE(1)
-    # = 7 × (1 + 256) + 1 = 7 × 257 + 1 = 1800
+    # Forward NTT timing (ping-pong: 1 butterfly/cycle after prime)
+    # 7 layers × (1 INIT + 1 PRIME + 127 OVERLAP + 1 FLUSH) + 1 DONE
+    # = 7 × 130 + 1 = 911
+    EXPECTED_NTT = 911
     ntt_cycles = await run_transform(dut, MODE_NTT)
-    dut._log.info(f"  Forward NTT: {ntt_cycles} cycles")
+    dut._log.info(f"  Forward NTT: {ntt_cycles} cycles (expected {EXPECTED_NTT})")
+    assert ntt_cycles == EXPECTED_NTT, \
+        f"NTT cycle count {ntt_cycles} != expected {EXPECTED_NTT}"
 
     # Reload for INTT
     await load_poly(dut, poly)
 
-    # Inverse NTT timing
-    # 7 layers + scaling: 1800 + SCALE_INIT(1) + 256*(READ+WRITE) + S_DONE already counted
-    # = 1800 + 1 + 512
+    # Inverse NTT timing (butterfly layers + dual-port scaling)
+    # 7 × 130 + SCALE_INIT(1) + 128×(READ+WRITE) + DONE(1)
+    # = 910 + 1 + 256 + 1 = 1168
+    EXPECTED_INTT = 1168
     intt_cycles = await run_transform(dut, MODE_INTT)
-    dut._log.info(f"  Inverse NTT: {intt_cycles} cycles")
-
-    # Sanity check: INTT should take more cycles than NTT (scaling pass)
-    assert intt_cycles > ntt_cycles, \
-        f"INTT ({intt_cycles}) should take more cycles than NTT ({ntt_cycles})"
+    dut._log.info(f"  Inverse NTT: {intt_cycles} cycles (expected {EXPECTED_INTT})")
+    assert intt_cycles == EXPECTED_INTT, \
+        f"INTT cycle count {intt_cycles} != expected {EXPECTED_INTT}"
 
     dut._log.info(f"PASS: Timing verified (NTT={ntt_cycles}, INTT={intt_cycles})")

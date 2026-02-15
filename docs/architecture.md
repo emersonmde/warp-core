@@ -64,7 +64,10 @@ graph TD
 ## NTT/INTT Engine
 
 The NTT engine is a sequential FSM that performs 7 layers of 128 butterflies each.
-It contains the polynomial RAM, twiddle factor ROM, and both butterfly types internally.
+It uses a ping-pong architecture with two poly_ram instances: each layer reads from a
+source RAM and writes to a dest RAM, swapping roles per layer. This enables 1-butterfly-per-cycle
+throughput (after a 1-cycle prime read). A `data_in_b` register tracks which RAM holds the
+current polynomial, flipping after each 7-layer transform.
 
 ```mermaid
 graph TD
@@ -72,32 +75,36 @@ graph TD
         EXT["ext_addr/din/we"] --> MUX["RAM port mux"]
         FSM["FSM + addr gen"] --> MUX
 
-        MUX --> RAM["poly_ram (256x12 dual-port)"]
+        MUX --> RAMA["poly_ram A (256x12)"]
+        MUX --> RAMB["poly_ram B (256x12)"]
         FSM --> ROM["ntt_rom (128x12)"]
 
-        RAM -->|dout_a: even| CT["ntt_butterfly (CT)"]
-        RAM -->|dout_b: odd| CT
-        ROM -->|zeta| CT
+        RAMA -->|"src_dout (via src_sel mux)"| CT["ntt_butterfly (CT)"]
+        RAMB -->|"src_dout (via src_sel mux)"| CT
+        ROM -->|"zeta_reg (pipelined)"| CT
 
-        RAM -->|dout_a: even| GS["intt_butterfly (GS)"]
-        RAM -->|dout_b: odd| GS
-        ROM -->|zeta| GS
+        RAMA -->|"src_dout"| GS["intt_butterfly (GS)"]
+        RAMB -->|"src_dout"| GS
+        ROM -->|"zeta_reg"| GS
 
         CT -->|"mode=0"| BMUX["butterfly mux"]
         GS -->|"mode=1"| BMUX
-        BMUX --> RAM
+        BMUX -->|"write to dest RAM"| RAMA
+        BMUX -->|"write to dest RAM"| RAMB
 
-        RAM -->|dout_a| SCALE["barrett_reduce (×3303)"]
-        SCALE -->|"INTT scaling"| RAM
+        RAMA -->|"data_dout (port A+B)"| SCALEA["barrett_reduce A (×3303)"]
+        RAMB -->|"data_dout (port A+B)"| SCALEB["barrett_reduce B (×3303)"]
+        SCALEA -->|"INTT scaling (even)"| RAMA
+        SCALEB -->|"INTT scaling (odd)"| RAMB
     end
 ```
 
 **Timing:**
-- Forward NTT: 1800 cycles (7 layers × 257 + 1 done)
-- Inverse NTT: 2313 cycles (1800 + 1 init + 512 scale)
-- At 100 MHz: 18 µs / 23 µs per NTT/INTT
+- Forward NTT: 911 cycles (7 layers × 130 + 1 done)
+- Inverse NTT: 1168 cycles (910 butterfly + 257 dual-port scaling + 1 done)
+- At 100 MHz: 9.1 µs / 11.7 µs per NTT/INTT
 
-**FSM States:** `IDLE → LAYER_INIT → BF_READ → BF_WRITE → ... → [SCALE_INIT → SCALE_READ → SCALE_WRITE → ...] → DONE → IDLE`
+**FSM States:** `IDLE → LAYER_INIT → BF_PRIME → BF_OVERLAP(×127) → BF_FLUSH → ... → [SCALE_INIT → SCALE_READ → SCALE_WRITE → ...] → DONE → IDLE`
 
 ## Basemul
 
@@ -220,7 +227,7 @@ graph TD
 
 > **Sub-engines instantiated:** ntt_engine (1), poly_basemul (1), cbd_sampler (1), mod_add (1), mod_sub (1), compress ×3 (D=1,4,10), decompress ×3 (D=1,4,10).
 >
-> **BRAM budget:** 20 (bank) + 1 (NTT) + 2 (basemul) + 1 (CBD) = 24 out of 50 on Artix-7 XC7A35T.
+> **BRAM budget:** 20 (bank) + 2 (NTT ping-pong) + 2 (basemul) + 1 (CBD) = 25 out of 50 on Artix-7 XC7A35T.
 >
 > **Opcodes:** NOP(0), COPY_TO_NTT(1), COPY_FROM_NTT(2), RUN_NTT(3), COPY_TO_BM_A(4), COPY_TO_BM_B(5), COPY_FROM_BM(6), RUN_BASEMUL(7), POLY_ADD(8), POLY_SUB(9), COMPRESS(10), DECOMPRESS(11), CBD_SAMPLE(12).
 >
@@ -270,13 +277,13 @@ graph TD
 | `docs/design_decisions.md` | Done | Technical design document with 12 sections: Barrett V=20158 (floor vs ceiling), subtract-and-select pattern, basemul 3-Barrett optimization, compress via Barrett quotient extraction, shift-based NTT address generation, 2-cycle read/write butterfly pattern, separate CT/GS instantiation, direct operations on RAM bank, CBD dual-port write trick, unsigned-only datapath philosophy, flat sequencer ROM, ACVP compliance testing strategy. |
 | README.md updates | Done | Updated status (24 modules, 96+60 tests), expanded milestone table (1-6), added Design Decisions section, added ACVP testing commands. |
 
-### Milestone 8 -- Performance Optimizations
+### Milestone 8 -- Performance Optimizations (partial)
 | Module | Status | Description |
 |--------|--------|-------------|
-| Pipelined NTT butterfly | Planned | Register Barrett multiplication output to break critical path for 200 MHz on Artix-7. Current combinational path: zeta*odd → Barrett multiply → shift → tq → subtract → cond_sub_q. |
-| Overlapped butterfly R/W | Planned | With true dual-port RAM, read next butterfly operands while writing current results. Approaches 1 cycle per butterfly instead of 2. |
-| Dual-port INTT scaling | Planned | Use both RAM ports during scaling pass to process 2 coefficients per cycle, halving from 512 to 256 cycles. |
-| Vivado synthesis | Planned | Target XC7A35T. Timing reports, DSP48E1 mapping verification (Barrett multiplies to DSP slices), resource utilization baseline. |
+| Ping-pong overlapped NTT | Done | Two poly_ram instances alternate as source/dest per layer. 1 butterfly/cycle after 1-cycle prime. Forward NTT: 911 cycles (was 1800, 1.98×). Cost: 1 BRAM. |
+| Dual-port INTT scaling | Done | Both RAM ports process even/odd coefficients simultaneously via 2 Barrett reducers. INTT scaling: 257 cycles (was 513, 2.0×). INTT total: 1168 cycles (was 2313, 1.98×). |
+| Pipelined NTT butterfly | Planned | Register Barrett multiplication output to break critical path for 200 MHz on Artix-7. Deferred until Vivado synthesis data is available. |
+| Vivado synthesis | Planned | Target XC7A35T. Timing reports, DSP48E1 mapping verification, resource utilization baseline. |
 
 ### Milestone 9 -- ML-DSA (Dilithium) NTT Core
 | Module | Status | Description |
