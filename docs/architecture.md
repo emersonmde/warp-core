@@ -277,31 +277,70 @@ graph TD
 | `docs/design_decisions.md` | Done | Technical design document with 12 sections: Barrett V=20158 (floor vs ceiling), subtract-and-select pattern, basemul 3-Barrett optimization, compress via Barrett quotient extraction, shift-based NTT address generation, 2-cycle read/write butterfly pattern, separate CT/GS instantiation, direct operations on RAM bank, CBD dual-port write trick, unsigned-only datapath philosophy, flat sequencer ROM, ACVP compliance testing strategy. |
 | README.md updates | Done | Updated status (24 modules, 96+60 tests), expanded milestone table (1-6), added Design Decisions section, added ACVP testing commands. |
 
-### Milestone 8 -- Performance Optimizations (partial)
+### Milestone 8 -- NTT Performance Optimizations (partial)
 | Module | Status | Description |
 |--------|--------|-------------|
 | Ping-pong overlapped NTT | Done | Two poly_ram instances alternate as source/dest per layer. 1 butterfly/cycle after 1-cycle prime. Forward NTT: 911 cycles (was 1800, 1.98×). Cost: 1 BRAM. |
 | Dual-port INTT scaling | Done | Both RAM ports process even/odd coefficients simultaneously via 2 Barrett reducers. INTT scaling: 257 cycles (was 513, 2.0×). INTT total: 1168 cycles (was 2313, 1.98×). |
-| Pipelined NTT butterfly | Planned | Register Barrett multiplication output to break critical path for 200 MHz on Artix-7. Deferred until Vivado synthesis data is available. |
-| Vivado synthesis | Planned | Target XC7A35T. Timing reports, DSP48E1 mapping verification, resource utilization baseline. |
+| Pipelined NTT butterfly | Deferred | Register insertion to break critical path for higher Fmax. Deferred until Vivado synthesis provides timing data. |
 
-### Milestone 9 -- ML-DSA (Dilithium) NTT Core
+### Milestone 9 -- Keccak Core (complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| Parameterized arithmetic | Planned | Make kyber_pkg.vh constants (Q, BARRETT_V, COEFF_WIDTH) selectable between Kyber (q=3329, 12-bit) and Dilithium (q=8380417, 23-bit) at compile time. |
-| Dilithium NTT/INTT | Planned | Adapted NTT engine for Dilithium's field: different primitive root of unity, twiddle factors, widened poly_ram to 23-bit. Note: 23-bit q requires careful DSP48E1 planning — 25×18 multipliers may need split for 46-bit Barrett products. |
-| Dilithium basemul | Planned | Adapted basemul_unit for wider coefficients. |
-| ML-DSA ACVP vectors | Planned | Verify NTT intermediate values against FIPS 204 test vectors. |
+| `keccak_rc` | Done | Keccak-f[1600] round constant ROM. 24 constants, combinational. From vilya project. |
+| `keccak_round` | Done | Single Keccak-f[1600] round (theta, rho, pi, chi, iota). Purely combinational. From vilya project. |
+| `keccak_sponge` | Done | Multi-mode sponge controller: SHA3-256 (rate=136, suffix=0x06, 32B out), SHA3-512 (rate=72, suffix=0x06, 64B out), SHAKE-128 (rate=168, suffix=0x1F, unlimited), SHAKE-256 (rate=136, suffix=0x1F, unlimited). 5-state FSM (IDLE, ABSORB, PAD, PERMUTE, SQUEEZE). 1600-bit state register with byte-lane XOR, 24-cycle iterative Keccak-f[1600], FIPS 202 pad10*1. Byte-stream valid/ready handshake. 11 tests against hashlib oracle. |
 
-> **Note:** Goal: single RTL codebase that synthesizes for either ML-KEM or ML-DSA via a top-level parameter, sharing NTT butterfly and Barrett reduction datapath.
+> **Architecture:** 1600-bit state register (not BRAM — needs byte-addressable XOR during absorb). Iterative permutation reuses one combinational `keccak_round` instance for 24 rounds (24 cycles per permutation). Mode parameters (rate, domain suffix, output length) are combinational from a 2-bit mode register latched on start.
+>
+> **Resource estimate:** ~1650 FFs (1600 state + 50 counters/FSM), ~3500 LUTs (keccak_round ~3200, sponge controller ~300), 0 BRAM, 0 DSP.
+>
+> **Verification:** 11 tests — SHA3-256 (empty, short, multiblock), SHA3-512 (short, multiblock), SHAKE-128 (short, 256-byte long squeeze), SHAKE-256 (short, ML-KEM PRF pattern), block boundary padding, back-to-back hashing. All verified against Python hashlib oracle.
 
-### Milestone 10 -- SoC Integration
+### Milestone 10 -- Autonomous ML-KEM
 | Module | Status | Description |
 |--------|--------|-------------|
-| AXI-Lite wrapper | Planned | Register interface wrapping coefficient-level I/O for standard FPGA bus integration. |
-| DMA support | Planned | Bulk polynomial load/store for reduced host interaction overhead. |
-| Keccak integration | Planned | Wire open-source or vendor Keccak-f[1600] core to keccak_if port group. |
-| Example SoC | Planned | Integration on Artix-7 with soft processor (MicroBlaze or RISC-V) demonstrating full ML-KEM-768 key exchange. Resource utilization and Fmax benchmarks. |
+| Keccak integration | Planned | Wire Keccak engine into kyber_top. Replace host-side SHAKE/SHA3 with hardware: XOF for A_hat matrix expansion, PRF for CBD byte generation, G/H/J hash functions. |
+| Autonomous controllers | Planned | Single-invocation ML-KEM-768 KeyGen, Encaps, and Decaps — hardware performs all hashing internally, host only provides seeds/keys/ciphertext. |
+| ACVP re-verification | Planned | Re-verify all 60 ACVP vectors through the autonomous (Keccak-integrated) path. |
+
+### Milestone 11 -- Dilithium NTT Core
+| Module | Status | Description |
+|--------|--------|-------------|
+| Parameterized shared modules | Planned | Width-parameterize `poly_ram`, `mod_add`, `mod_sub`, `cond_sub_q`, `cond_add_q` for both 12-bit (Kyber) and 23-bit (Dilithium). Regression-test Kyber after parameterization. |
+| `solinas_reduce` | Planned | Modular reduction for q=8380417=2^23-2^13+1 via iterated shift-subtract. Three iterations collapse 46-bit input to [0, ~q]. Zero DSPs — pure fabric logic. Replaces Barrett for Dilithium. |
+| `dil_ntt_butterfly` / `dil_intt_butterfly` | Planned | 23-bit Cooley-Tukey / Gentleman-Sande butterflies. 23×23 multiply uses 2-DSP split (17-bit × 23-bit + 6-bit × 23-bit, cascade via PCOUT). Solinas reduction instead of Barrett. |
+| `dil_ntt_rom` | Planned | 256×23-bit twiddle factor ROM. ζ=1753 (primitive 512th root of unity mod q), 8-bit bit-reversal indexing. |
+| `dil_ntt_engine` | Planned | 8-layer ping-pong NTT/INTT engine, reusing FSM architecture from Kyber engine. Scale factor: 256^-1 mod q = 8347681. Forward ~1041 cycles, INTT ~1298 cycles (estimated). |
+| Pointwise multiply | Planned | Element-wise (a_i × b_i) mod q for 256 coefficients. Simpler than Kyber basemul — Dilithium's complete NTT means no degree-1 polynomial pairs. |
+
+> **Key difference from Kyber:** Dilithium's NTT is a complete 8-layer transform (not 7-layer incomplete). q=8380417 is a Solinas prime, so modular reduction uses shift-subtract chains instead of Barrett multiplication — zero DSPs for reduction, ~2-3 LUT levels of delay. The 23×23 butterfly multiply needs 2 DSP48E1 slices (split via cascade), but total DSP count per butterfly (~2) is actually lower than Kyber (~3, due to Barrett multiplies).
+
+### Milestone 12 -- ML-DSA (FIPS 204)
+| Module | Status | Description |
+|--------|--------|-------------|
+| `power2round` | Planned | Split coefficient into (a1, a0) where a = a1·2^13 + a0. Shift-and-add only, no DSP. |
+| `decompose` | Planned | Split coefficient for signature hint system. Magic-multiply constants for γ2=(q-1)/32 and γ2=(q-1)/88. |
+| `make_hint` / `use_hint` | Planned | Hint generation and application for signature compression. Combinational comparators + increment logic. |
+| `chknorm` | Planned | Infinity-norm check on polynomial (all coefficients within bound). Pipelined 256-element comparator with OR-tree reduction. |
+| Rejection sampling | Planned | Uniform mod q (3 bytes, accept if <q, ~0.1% rejection), uniform_eta, SampleInBall (challenge polynomial with τ nonzero ±1 entries via SHAKE-256). |
+| `dil_top` | Planned | Dilithium polynomial bank + micro-op FSM. Reuse kyber_top slot architecture with wider coefficients and Dilithium-specific opcodes (Power2Round, Decompose, norm check, pointwise multiply). |
+| ML-DSA-65 controllers | Planned | KeyGen, Sign, and Verify sequencers. Sign includes rejection loop (re-sign if norm check fails). |
+| FIPS 204 ACVP compliance | Planned | Verify against NIST ML-DSA-65 ACVP test vectors. |
+
+### Milestone 13 -- AXI-Lite Wrapper
+| Module | Status | Description |
+|--------|--------|-------------|
+| AXI-Lite register interface | Planned | Memory-mapped control/status for both ML-KEM and ML-DSA operations. Opcode dispatch, polynomial load/store, interrupt on completion. |
+| Bulk transfer interface | Planned | DMA-friendly burst mode for polynomial and key material I/O. |
+| Integration testbench | Planned | AXI-Lite BFM (bus functional model) exercising full KeyGen/Encaps/Decaps/Sign/Verify sequences. |
+
+### Milestone 14 -- FPGA Synthesis & Optimization
+| Module | Status | Description |
+|--------|--------|-------------|
+| Vivado synthesis | Planned | Target XC7A35T. Resource utilization, DSP48E1 mapping verification, initial timing report. |
+| Timing closure | Planned | Pipelined butterfly (register insertion) if critical path exceeds target Fmax. Separate analysis for Kyber and Dilithium datapaths. |
+| Performance benchmarks | Planned | Cycle-accurate operation latency, throughput (ops/sec), comparison with published ML-KEM/ML-DSA hardware implementations. |
 
 ## Compress / Decompress
 
