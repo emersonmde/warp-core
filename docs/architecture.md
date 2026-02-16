@@ -297,12 +297,23 @@ graph TD
 >
 > **Verification:** 11 tests — SHA3-256 (empty, short, multiblock), SHA3-512 (short, multiblock), SHAKE-128 (short, 256-byte long squeeze), SHAKE-256 (short, ML-KEM PRF pattern), block boundary padding, back-to-back hashing. All verified against Python hashlib oracle.
 
-### Milestone 10 -- Autonomous ML-KEM
+### Milestone 10 -- Autonomous ML-KEM (Phase A: KeyGen complete)
 | Module | Status | Description |
 |--------|--------|-------------|
-| Keccak integration | Planned | Wire Keccak engine into kyber_top. Replace host-side SHAKE/SHA3 with hardware: XOF for A_hat matrix expansion, PRF for CBD byte generation, G/H/J hash functions. |
-| Autonomous controllers | Planned | Single-invocation ML-KEM-768 KeyGen, Encaps, and Decaps — hardware performs all hashing internally, host only provides seeds/keys/ciphertext. |
-| ACVP re-verification | Planned | Re-verify all 60 ACVP vectors through the autonomous (Keccak-integrated) path. |
+| `auto_keygen_ctrl` | Done | Master sequencer for autonomous KeyGen: SEED_ABSORB (SHA3-512), G_SQUEEZE (rho/sigma), EXPAND_A (9x SampleNTT via SHAKE-128), PRF_CBD (6x SHAKE-256), POLY_OPS (63 micro-ops: NTT + matmul). ~35k cycles. |
+| `auto_keygen_top` | Done | Wrapper: auto_keygen_ctrl + keccak_sponge + kyber_top. CBD bridge mux routes Keccak squeeze to CBD sampler. Host port muxed between controller (busy) and external (idle). rho readback via byte-indexed register. |
+| Autonomous Encaps | Planned | Single-invocation ML-KEM-768 Encaps with hardware hashing. |
+| Autonomous Decaps | Planned | Single-invocation ML-KEM-768 Decaps with hardware hashing + FO re-encryption. |
+
+> **Architecture:** kyber_top remains UNMODIFIED. All new logic lives in auto_keygen_ctrl (sequencer) and auto_keygen_top (wrapper with muxing). The Keccak sponge is shared across all hash operations (G, XOF, PRF) via mode switching.
+>
+> **Squeeze handshake timing:** Registered `squeeze_ready` (NBA) means Keccak advances `byte_idx` one cycle after assertion, but `squeeze_data` is combinational from `byte_idx`. A `squeeze_ack` flag ensures each byte is captured only once: capture when ack=0, wait when ack=1 (2 cycles per squeeze byte).
+>
+> **SampleNTT:** 3-byte rejection sampling (d1={b1[3:0],b0}, d2={b2,b1[7:4]}, accept if < 3329). Writes directly to bank slots via host port. ~580 squeeze+sample cycles per polynomial (varies with rejection rate).
+>
+> **Resource estimate (additional):** ~2200 FFs (512 rho/sigma + 1650 keccak_sponge + ~50 counters), ~3700 LUTs (3500 keccak_round + ~200 ctrl logic), 0 BRAM, 0 DSP. Total design: ~5200 FFs, ~10700 LUTs, 25 BRAM, 3 DSP.
+>
+> **Verification:** 5 tests (single vector, rho readback, back-to-back, cycle count, 25 ACVP vectors). All 25 ML-KEM-768 ACVP keyGen vectors pass through fully autonomous hardware path.
 
 ### Milestone 11 -- Dilithium NTT Core
 | Module | Status | Description |

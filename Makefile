@@ -2,17 +2,17 @@
 .PHONY: test_cond_sub_q test_barrett_reduce test_cond_add_q test_mod_add test_mod_sub test_ntt_butterfly
 .PHONY: test_intt_butterfly test_ntt_rom test_poly_ram test_ntt_engine test_basemul_unit test_poly_basemul
 .PHONY: test_compress test_decompress test_poly_addsub test_cbd_sampler test_kyber_top test_encaps_top
-.PHONY: test_keygen_top test_decaps_top test_keccak_sponge
+.PHONY: test_keygen_top test_decaps_top test_keccak_sponge test_auto_keygen
 .PHONY: test_acvp_oracle test_acvp_keygen test_acvp_encaps test_acvp_decaps test_acvp
 .PHONY: waves_cond_sub_q waves_barrett_reduce waves_cond_add_q waves_mod_add waves_mod_sub waves_ntt_butterfly
 .PHONY: waves_intt_butterfly waves_ntt_rom waves_poly_ram waves_ntt_engine waves_basemul_unit waves_poly_basemul
 .PHONY: waves_compress waves_decompress waves_poly_addsub waves_cbd_sampler waves_kyber_top waves_encaps_top
-.PHONY: waves_keygen_top waves_decaps_top waves_keccak_sponge
+.PHONY: waves_keygen_top waves_decaps_top waves_keccak_sponge waves_auto_keygen
 
 test: test_cond_sub_q test_barrett_reduce test_cond_add_q test_mod_add test_mod_sub test_ntt_butterfly \
       test_intt_butterfly test_ntt_rom test_poly_ram test_ntt_engine test_basemul_unit test_poly_basemul \
       test_compress test_decompress test_poly_addsub test_cbd_sampler test_kyber_top test_encaps_top \
-      test_keygen_top test_decaps_top test_keccak_sponge \
+      test_keygen_top test_decaps_top test_keccak_sponge test_auto_keygen \
       test_acvp_oracle test_acvp_keygen test_acvp_encaps test_acvp_decaps
 
 # ACVP compliance tests (NIST FIPS 203 test vectors)
@@ -93,6 +93,9 @@ test_decaps_top:
 test_keccak_sponge:
 	$(MAKE) -C tb/keccak_sponge
 
+test_auto_keygen:
+	$(MAKE) -C tb/auto_keygen
+
 # Waveform dumps — produces FST files viewable in GTKWave
 waves_cond_sub_q:
 	$(MAKE) -C tb/cond_sub_q WAVES=1
@@ -157,6 +160,9 @@ waves_decaps_top:
 waves_keccak_sponge:
 	$(MAKE) -C tb/keccak_sponge WAVES=1
 
+waves_auto_keygen:
+	$(MAKE) -C tb/auto_keygen WAVES=1
+
 clean:
 	$(MAKE) -C tb/cond_sub_q clean
 	$(MAKE) -C tb/barrett_reduce clean
@@ -179,6 +185,7 @@ clean:
 	$(MAKE) -C tb/keygen_top clean
 	$(MAKE) -C tb/decaps_top clean
 	$(MAKE) -C tb/keccak_sponge clean
+	$(MAKE) -C tb/auto_keygen clean
 	$(MAKE) -C tb/acvp_keygen clean
 	$(MAKE) -C tb/acvp_encaps clean
 	$(MAKE) -C tb/acvp_decaps clean
