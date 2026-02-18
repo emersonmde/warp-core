@@ -297,23 +297,28 @@ graph TD
 >
 > **Verification:** 11 tests — SHA3-256 (empty, short, multiblock), SHA3-512 (short, multiblock), SHAKE-128 (short, 256-byte long squeeze), SHAKE-256 (short, ML-KEM PRF pattern), block boundary padding, back-to-back hashing. All verified against Python hashlib oracle.
 
-### Milestone 10 -- Autonomous ML-KEM (Phase A: KeyGen complete)
+### Milestone 10 -- Autonomous ML-KEM (Phase A: KeyGen, Phase B: Encaps complete)
 | Module | Status | Description |
 |--------|--------|-------------|
 | `auto_keygen_ctrl` | Done | Master sequencer for autonomous KeyGen: SEED_ABSORB (SHA3-512), G_SQUEEZE (rho/sigma), EXPAND_A (9x SampleNTT via SHAKE-128), PRF_CBD (6x SHAKE-256), POLY_OPS (63 micro-ops: NTT + matmul). ~35k cycles. |
 | `auto_keygen_top` | Done | Wrapper: auto_keygen_ctrl + keccak_sponge + kyber_top. CBD bridge mux routes Keccak squeeze to CBD sampler. Host port muxed between controller (busy) and external (idle). rho readback via byte-indexed register. |
-| Autonomous Encaps | Planned | Single-invocation ML-KEM-768 Encaps with hardware hashing. |
+| `auto_encaps_ctrl` | Done | Master sequencer for autonomous Encaps: INPUT_M (32 bytes), INPUT_EK (1184 bytes with simultaneous SHA3-256 absorb + ByteDecode(12) for t_hat + rho extraction), H_SQUEEZE (32 bytes), G_HASH (SHA3-512 for K and r), EXPAND_A (9x SampleNTT), LOAD_M (Decompress(1,m)), PRF_CBD (7x SHAKE-256), POLY_OPS (86 micro-ops: NTT + matmul + INTT + compress). ~39k cycles. |
+| `auto_encaps_top` | Done | Wrapper: auto_encaps_ctrl + keccak_sponge + kyber_top. Same muxing pattern as auto_keygen_top. K readback via byte-indexed register. |
 | Autonomous Decaps | Planned | Single-invocation ML-KEM-768 Decaps with hardware hashing + FO re-encryption. |
 
-> **Architecture:** kyber_top remains UNMODIFIED. All new logic lives in auto_keygen_ctrl (sequencer) and auto_keygen_top (wrapper with muxing). The Keccak sponge is shared across all hash operations (G, XOF, PRF) via mode switching.
+> **Architecture:** kyber_top remains UNMODIFIED. All new logic lives in auto_{keygen,encaps}_ctrl (sequencers) and auto_{keygen,encaps}_top (wrappers with muxing). The Keccak sponge is shared across all hash operations (H, G, XOF, PRF) via mode switching.
 >
 > **Squeeze handshake timing:** Registered `squeeze_ready` (NBA) means Keccak advances `byte_idx` one cycle after assertion, but `squeeze_data` is combinational from `byte_idx`. A `squeeze_ack` flag ensures each byte is captured only once: capture when ack=0, wait when ack=1 (2 cycles per squeeze byte).
 >
 > **SampleNTT:** 3-byte rejection sampling (d1={b1[3:0],b0}, d2={b2,b1[7:4]}, accept if < 3329). Writes directly to bank slots via host port. ~580 squeeze+sample cycles per polynomial (varies with rejection rate).
 >
-> **Resource estimate (additional):** ~2200 FFs (512 rho/sigma + 1650 keccak_sponge + ~50 counters), ~3700 LUTs (3500 keccak_round + ~200 ctrl logic), 0 BRAM, 0 DSP. Total design: ~5200 FFs, ~10700 LUTs, 25 BRAM, 3 DSP.
+> **Encaps EK parsing:** Simultaneous Keccak absorb and ByteDecode(12) during INPUT_EK phase. Every 3 ek bytes produce 2 NTT-domain coefficients (c0={b1[3:0],b0}, c1={b2,b1[7:4]}) written to t_hat slots 9-11. Last 32 ek bytes stored as rho. SHA3-256 absorb_last on final byte triggers H(ek) computation.
 >
-> **Verification:** 5 tests (single vector, rho readback, back-to-back, cycle count, 25 ACVP vectors). All 25 ML-KEM-768 ACVP keyGen vectors pass through fully autonomous hardware path.
+> **Encaps hash pipeline:** H(ek) via SHA3-256 → G(m||h) via SHA3-512 → K (shared secret, 32 bytes) + r (encryption randomness, 32 bytes). Three sequential Keccak invocations before EXPAND_A.
+>
+> **Resource estimate (additional per autonomous module):** ~2200 FFs (512 rho/sigma + 1650 keccak_sponge + ~50 counters), ~3700 LUTs (3500 keccak_round + ~200 ctrl logic), 0 BRAM, 0 DSP. Encaps controller adds ~1280 FFs for m/rho/h/K/r registers.
+>
+> **Verification:** KeyGen: 5 tests (25 ACVP vectors). Encaps: 5 tests (single vector, K readback, back-to-back, cycle count, 25 ACVP vectors).
 
 ### Milestone 11 -- Dilithium NTT Core
 | Module | Status | Description |
